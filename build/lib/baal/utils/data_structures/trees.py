@@ -1,0 +1,491 @@
+from baal.utils.sugar import memoized
+from baal.utils.general import cprint, bcolors, cformat, nonstr_join
+from baal.utils import config
+import re, types, logging
+
+
+def from_string(in_str):
+    """
+    modeled from NLTK's version in their class.
+    Assuming () as open and close patterns
+    e.g. (S (NP (NNP John)) (VP (V runs)))
+
+    TODO: we want parent to be insertion, foot to be foot. fix.
+
+    """
+    tree_starting = lambda x: x[0] == "("
+    tree_ending = lambda x: x[0] == ")"
+    token_re = re.compile("\(\s*([^\s\(\)]+)?|\)|([^\s\(\)]+)")
+    stack = [(None, [])]
+    for match in token_re.finditer(in_str):
+        token = match.group()
+        # Case: tree/subtree starting. prepare structure
+        if tree_starting(token):
+            stack.append((token[1:].lstrip(), []))
+        # Case: tree/subtree is ending. make sure it's buttoned up
+        elif tree_ending(token):
+            label, children = stack.pop()
+            stack[-1][1].append(Tree(symbol=label,
+                                     children=children,
+                                     parent=stack[-1][0]))
+        # Case: leaf node.
+        else:
+            stack[-1][1].append(token)
+
+    assert len(stack) == 1
+    assert len(stack[0][1]) == 1
+    assert stack[0][0] is None
+
+    resulting_tree = stack[0][1][0]
+    if isinstance(resulting_tree, types.ListType):
+        resulting_tree = resulting_tree[0]
+
+    assert isinstance(resulting_tree, Tree)
+
+    return clean_tree(resulting_tree, [0], {tuple([0]):resulting_tree})
+
+
+def clean_tree(root_tree, address, addressbook):
+    """
+        Clean the tree. This is called by from_string
+        From_String doesn't annotate the tree, it just makes makes the structure
+        this is to annotate with the relevant information
+    """
+    logger = logging.getLogger('trees')
+
+    if "*" in root_tree.symbol:
+        root_tree.adjunct = True
+        root_tree.direction = "right" if root_tree.symbol[0] == "*" else "left"
+        root_tree.symbol = root_tree.symbol.replace("*", "")
+
+    for c_i, child in enumerate(root_tree.children):
+        next_address = address+[c_i]
+        if isinstance(child, Tree):
+
+            if len(child.children) > 0:
+                # Interior node
+                child, addressbook = clean_tree(child, next_address, addressbook)
+                root_tree.children[c_i] = child
+
+                if root_tree.head is not None:
+                    root_tree.head = child.head
+                    root_tree.spine_index = c_i
+                else:
+                    raise AlgorithmicException, "Only making initial trees here"
+
+            else:
+                # Substitution point
+                child.complement = True
+
+        else:
+            # Found the head
+            child = Tree(symbol=child, parent=root_tree.symbol)
+            child.lexical = True
+            root_tree.children[c_i] = child
+            head = child
+            head.lexical = True
+            root_tree.head = head.symbol
+            root_tree.spine_index = c_i
+
+
+        child.parent = root_tree.symbol
+        addressbook[tuple(next_address)] = child
+
+
+    # Debugging stuff
+    try:
+        assert len(root_tree.head) > 0, type(root_tree)
+    except AttributeError as e:
+        logger.debug(root_tree)
+        raise e
+
+    return root_tree, addressbook
+
+class Tree(object):
+    def __init__(self, symbol, children=[], parent=""):
+        self.symbol = symbol
+        self.children = children
+        self.parent = parent
+        self.head = ""
+        self.spine_index = -1
+        self.complement = False
+        self.adjunct = False
+        self.lexical = False
+        self.depth = 0
+        self.direction = ""
+
+    @classmethod
+    def make(cls, tree=None, bracketed_string=None):
+        """
+            Instantiation check order: bracketed_string, lexical_item, root.
+            so leave bracketed_string and lexical_item empty if root.
+            lexical_item will only work if you have a lexicon
+            and even then, it expects the lexicon to yield bracketed strings
+        """
+        if not tree and not bracketed_string:
+            raise TypeError("tree.instantiate takes either an existing tree"
+                            + " or a bracketed string structure to convert")
+
+        if bracketed_string:
+            new_tree, addressbook = from_string(bracketed_string)
+        elif tree:
+            #I don't think I'll ever use this, but just in case
+            new_tree, addressbook = copy(tree)
+        else:
+            raise TypeError("I don't know how you got here, but this is wrong")
+
+        return new_tree, addressbook
+
+    def clone(self, address=[0], addressbook={},prefab_children=None):
+        """ Copy the tree and make the addressbook along the way """
+        if prefab_children is not None:
+            new_children = prefab_children
+        else:
+            new_children = []
+            for c_i, child in enumerate(self.children):
+                new_child, addressbook = child.clone(address+[c_i], addressbook)
+                new_children.append(new_child)
+        new_tree = Tree(self.symbol, children=new_children, parent=self.parent)
+        new_tree.head = self.head
+        new_tree.spine_index = self.spine_index
+        new_tree.complement = self.complement
+        new_tree.adjunct = self.adjunct
+        new_tree.lexical = self.lexical
+        new_tree.direction = self.direction
+
+        addressbook[tuple(address)] = new_tree
+
+        return new_tree, addressbook
+
+    def insert_into(self, op_tree, op_addr, recur_addr=[0], addrbook={}):
+        """
+            Input: an insertion tree:
+                    the root symbol matches a frontier interior symbol
+                        (an ancestor of the further left/right lexical)
+        """
+
+        # /// Check for base case
+        if len(op_addr) == 0:
+            new_tree, addrbook = self.clone(recur_addr, addrbook)
+            if op_tree.direction == "left":
+                # adding to the left side of the node
+                other_children = []
+                for c_i, child in enumerate(op_tree.children):
+                    new_child, addrbook = child.clone(recur_addr+[c_i], addrbook)
+                    other_children.append(new_child)
+                    new_child.parent = new_tree.symbol
+
+                new_tree.children = other_children + new_tree.children
+
+                if new_tree.spine_index >= 0:
+                    new_tree.spine_index += len(op_tree.children)
+
+            else:
+                # Adding to the right side of the node
+                other_children = []
+                b_i = len(self.children)
+                for c_i, child in enumerate(op_tree.children):
+                    new_child, addrbook = child.clone(recur_addr+[b_i+c_i], addrbook)
+                    new_child.parent = new_tree.symbol
+                    other_children.append(new_child)
+                new_tree.children += other_children
+            return new_tree, addrbook
+
+
+        # /// Recursive case. Clone children, recurse on operation child
+        next_addr, address = op_addr[0], op_addr[1:]
+        new_children = []
+        for c_i, child in enumerate(self.children):
+            if c_i == next_addr:
+                new_child, addrbook = child.insert_into(op_tree, op_addr, recur_addr+[c_i], addrbook)
+                new_child.parent = self.symbol
+                new_children.append(new_child)
+            else:
+                new_child, addrbook = child.clone(recur_addr+[c_i], addrbook)
+                new_children.append(new_child)
+
+        # /// Return ourself cloned
+        return self.clone(recur_addr, addrbook, new_children)
+
+    def substitute_into(self, op_tree, op_addr, recur_addr=[0], addrbook={}):
+        """
+            Input: an substitution tree:
+                    the root symbol matches a frontier symbol
+                        (a frontier symbol just beyond left/right lexical)
+        """
+        # /// Check for base case
+        if len(op_addr) == 0:
+            new_tree, addrbook = op_tree.clone(recur_addr, addrbook)
+            return new_tree, addrbook
+
+        # /// Recursive case. Clone children, recurse on operation child
+        next_addr, op_addr = op_addr[0], op_addr[1:]
+        new_children = []
+        for c_i, child in enumerate(self.children):
+            if c_i == next_addr:
+                new_child, addrbook = child.substitute_into(op_tree, op_addr,
+                                                            recur_addr+[c_i], addrbook)
+                new_child.parent = self.symbol
+                new_children.append(new_child)
+            else:
+                new_child, addrbook = child.clone(recur_addr+[c_i], addrbook)
+                new_children.append(new_child)
+        # /// Return ourself cloned
+        return self.clone(recur_addr, addrbook, new_children)
+
+    def __getitem__(self, k):
+        if k>=len(self.children):
+            return None
+        return self.children[k]
+
+    def __str__(self):
+        if config.ChartSettings().verbose:
+            return self.verbose_string()
+        return "From: %s; I am %s, with %s children: %s" % (self.parent, self.symbol, len(self.children), "\n".join([str(child) for child in self.children]))
+
+    def verbose_string(self):
+        # return self._simple_str()
+        p = lambda x: bcolors.OKBLUE+x+bcolors.ENDC
+        b = lambda x: bcolors.BOLD+x+bcolors.ENDC
+        g = lambda x: bcolors.OKGREEN+x+bcolors.ENDC
+        r = lambda x: bcolors.FAIL+x+bcolors.ENDC
+
+        if self.complement:
+            this_symbol = "%s(%s)" % (p("Subst"), g(self.symbol))
+        elif self.adjunct:
+            d = "[->]" if self.direction == "right" else "[<-]"
+            this_symbol = "%s(%s)" % (p(d+"Ins"), g(self.symbol))
+        elif self.lexical:
+            this_symbol = "%s(%s)" % (p("lex"), g(self.symbol))
+        else:
+            this_symbol = self.symbol
+
+        d = self.depth+1
+        s = lambda x: ("{:%d}" % (x*d)).format("")
+        if len(self.children) > 0:
+            tree_print = "\n"+s(4)+b("%s{"%d)
+            tree_print += "{:-<3}->\n".format(this_symbol)
+            tree_print += s(5) + r("[")
+            tree_print += (",\n"+s(6)).join([str(x) for x in self.children])
+            tree_print += r("]") + "\n"
+            tree_print += s(4)+b("}")
+            return tree_print
+        else:
+            return this_symbol
+
+    def __repr__(self):
+        if self.lexical:
+            return "lex/" + self.symbol
+        if self.adjunct:
+            sym = "<" if self.direction=="left" else ">"
+            sym = "ins/"+sym+"/"+self.symbol
+        elif self.complement:
+            sym = "sub/"+self.symbol
+        elif self.parent is None:
+            sym = "root/"+self.symbol
+        else:
+            sym = self.symbol
+
+        this_str = "(%s" % sym
+        for child in self.children:
+            this_str += " %s" % repr(child)
+        this_str+=")"
+        return this_str
+
+
+class Entry(object):
+    def __init__(self, tree, subst_points, adjoin_points,
+                 lexical, addressbook, derived):
+        self.tree = tree
+        self.lexical = lexical
+        self.addressbook = addressbook
+        self.derived = derived
+
+        subst_points = sorted(subst_points)
+        left_sub = []
+        right_sub = []
+        for address,subtree in subst_points:
+            if self.isleft(address):
+                left_sub = [(address, subtree)]
+            elif self.isright(address) and len(right_sub) == 0:
+                right_sub = [(address, subtree)]
+
+        self.subst_points = left_sub+right_sub
+        self.adjoin_points = [point for point in adjoin_points
+                              if self.leftfrontier(point[0])
+                              or self.rightfrontier(point[0])]
+
+    @classmethod
+    def make(cls, bracketed_string):
+        """ Initial make. Combine will copy, not make """
+        tree, addressbook = Tree.make(bracketed_string=bracketed_string)
+        addressbook = sorted(addressbook.items())
+        adjoin_points = []
+        subst_points = []
+        lexical = []
+        for address, subtree in addressbook:
+            if subtree.lexical:
+                lexical.append((address, subtree))
+            elif subtree.complement:
+                subst_points.append((address,subtree))
+            elif subtree.spine_index >= 0:
+                adjoin_points.append((address, subtree))
+
+        deriv_sym = "%s(%s)" % (tree.symbol, tree.head)
+        derived = [(("initial"), [0], deriv_sym)]
+        return cls(tree, subst_points, adjoin_points, lexical, addressbook, derived)
+
+    @classmethod
+    def sub_generate(cls, this, op, address):
+        tree = this.tree
+        op_tree = op.tree
+        new_tree, addressbook = tree.substitute_into(op_tree, address, [0], {})
+        addressbook = sorted(addressbook.items())
+        adjoin_points = []
+        subst_points = []
+        lexical = []
+        for address, subtree in addressbook:
+            if subtree.lexical:
+                lexical.append((address, subtree))
+            elif subtree.complement:
+                subst_points.append((address,subtree))
+            elif subtree.spine_index >= 0:
+                adjoin_points.append((address, subtree))
+        deriv_sym = "%s(%s)" % (op_tree.symbol, op_tree.head)
+        derived = this.derived + [("substitute", address, deriv_sym)] + \
+                  [("subtree_derived", op.derived)]
+        return cls(new_tree, subst_points, adjoin_points, lexical, addressbook, derived)
+
+    @classmethod
+    def ins_generate(cls, this, op, address):
+        tree = this.tree
+        op_tree = op.tree
+        new_tree, addressbook = tree.insert_into(op_tree, address, [0], {})
+        addressbook = sorted(addressbook.items())
+        adjoin_points = []
+        subst_points = []
+        lexical = []
+        for address, subtree in addressbook:
+            if subtree.lexical:
+                lexical.append((address, subtree))
+            elif subtree.complement:
+                subst_points.append((address,subtree))
+            elif subtree.spine_index >= 0:
+                adjoin_points.append((address, subtree))
+        deriv_sym = "%s(%s)" % (op_tree.symbol, op_tree.head)
+        derived = this.derived + [("insert", address, deriv_sym)] + \
+                  [("ins_derived", op.derived)]
+        return cls(new_tree, subst_points, adjoin_points, lexical, addressbook, derived)
+
+    def isleft(self, address):
+        return self._isleft(tuple(address), tuple(self.lexical[0][0]))
+
+    def isright(self, address):
+        return self._isright(tuple(address), tuple(self.lexical[-1][0]))
+
+    def leftfrontier(self, address):
+        return self._frontier(tuple(address), tuple(self.lexical[0][0]))
+
+    def rightfrontier(self, address):
+        return self._frontier(tuple(address), tuple(self.lexical[-1][0]))
+
+
+    @memoized
+    def _isleft(self, addressone, addresstwo):
+        for ind in range(min(len(addressone), len(addresstwo))):
+            if addressone[ind] < addresstwo[ind]:
+                return True
+            elif addressone[ind] > addresstwo[ind]:
+                return False
+        return False
+
+    @memoized
+    def _isright(self, addressone, addresstwo):
+        for ind in range(min(len(addressone), len(addresstwo))):
+            if addressone[ind] < addresstwo[ind]:
+                return False
+            elif addressone[ind] > addresstwo[ind]:
+                return True
+        return False
+
+    @memoized
+    def _frontier(self, addressone, addresstwo):
+        for ind in range(min(len(addressone), len(addresstwo))):
+            if addressone[ind] < addresstwo[ind]:
+                return False
+            elif addressone[ind] > addresstwo[ind]:
+                return False
+        return True
+
+    def combine(self, other_entry, edge_conditionals=(True,True)):
+        left_edge, right_edge = edge_conditionals
+        other_tree = other_entry.tree
+        sym_match = lambda x,y: x.symbol == y.symbol
+        if other_tree.adjunct:
+            for address, subtree in self.adjoin_points:
+                if sym_match(other_tree, subtree):
+                    # left insert says we are inserting on the left side
+                    # of this (self) guy
+                    # so, this means that left edge must true
+                    left_insert = other_tree.direction == "left"
+                    if left_edge and self.leftfrontier(address) and left_insert:
+                        yield Entry.ins_generate(self, other_entry, address[1:])
+                    elif right_edge and self.rightfrontier(address) and not left_insert:
+                        yield Entry.ins_generate(self, other_entry, address[1:])
+        else:
+            for address, subtree in self.subst_points:
+                if sym_match(other_tree, subtree):
+                    if left_edge and self.isleft(address):
+                        yield Entry.sub_generate(self, other_entry, address[1:])
+                    elif right_edge and self.isright(address):
+                        yield Entry.sub_generate(self, other_entry, address[1:])
+
+    def __str__(self):
+        for addr,item in self.addressbook:
+            item.depth = len(addr)
+        return "Entry<%s>" % str(self.tree)
+
+    def print_derived(self):
+        for deriv in self.derived:
+            print deriv
+
+"""
+0 the 1 dog 2 is 3 in 4 a 5 fight 6
+the -> 0, 1
+dog -> 1, 2
+is -> 2, 3
+in -> 3, 4
+a -> 4, 5
+fight -> 5, 6
+
+myleft == yourright
+or
+myright == yourleft
+
+
+"""
+
+
+def tests():
+    tree_strs = ["(S (NP) (VP (V loves) (NP)))",
+                 "(NP Chris)",
+                 "(NP Sandy)",
+                 "(VP* (ADVP madly))",
+                 "(*VP (ADVP madly))"]
+
+    for tree_str in tree_strs:
+        print "--------------------------"
+        grammar_entry = Entry.make(tree_str)
+        for address, tree in grammar_entry.addressbook:
+            print "-\n---"
+            print "Address %s for tree_str: %s" % (address, tree_str)
+            tree.debug_string()
+            print "---\n-"
+        print "--------------------------\n"
+
+    print "no early errors"
+
+if __name__ == "__main__":
+    tests()
+
+
