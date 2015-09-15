@@ -3,10 +3,12 @@
 A collection of algorithms and data structures I use for research.
 
 So, the arsenal is composed of: 
+
 -------
 * CRF
     - Linear CRF
     - (there's an hmm here)
+
 -------
 * learn 
     - Bayesian Hierarchical Grouping 
@@ -25,6 +27,7 @@ So, the arsenal is composed of:
     - Semantics
         + Currently, a simple model inspired by Hobbsian Logical Form
     - Note: the tree data structure which bears the brunt of the parsing work is in the utils.data_structures
+
 -------
 * Utils
     - A variety of utilities that I find useful
@@ -37,6 +40,7 @@ So, the arsenal is composed of:
     - vault
         + model storage
     - montecarlo, vocabulary (borrowed, citation in file), hobbsian logical form, and some other things. 
+
 -------
 
 * Future plans
