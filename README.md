@@ -4,9 +4,9 @@ This package contains the collection of algorithms and data structure I use for 
 
 ## Contents 
 * **.crf**: Conditional Random Field
-        + currently, only a linear chain implementation
+    - currently, only a linear chain implementation
 * **.learn.bhc**: Bayesian Hierarchical Clustering/Grouping 
-        + A port from a MATLAB port from the original C implementation
+    - A port from a MATLAB port from the original C implementation
 * **.nlp**: Natural Language Processing
     - **.nlp.corpora**:
         + Interfaces and handlers for corpora go here for a variety of datasets
