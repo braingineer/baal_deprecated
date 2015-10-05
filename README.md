@@ -1,12 +1,14 @@
-# BAAL 
+# BAAL
+
 ### (Brian's Arsenal of Algorithms for L*)
-
+---------------------------------------------
 A collection of algorithms and data structures I use for research.
+---------------------------------------------
+### Contents 
 
-So, the arsenal is composed of: 
-
-### Core Algorithms 
-* Conditional Random Fields
+#### Core  
+* Conditional Random Field
+        + currently, only a linear chain implementation
 * Bayesian Hierarchical Clustering/Grouping 
         + A port from a MATLAB port from the original C implementation
 * Natural Language Processing
@@ -26,8 +28,7 @@ So, the arsenal is composed of:
         + Natural Language Generation stuff
     - Note: the tree data structure which bears the brunt of the tree grammar work is in the utils.data_structures
 
-### Useful stuff
-* Utils
+#### Utils
     - A variety of utilities that I find useful
     - Config
         + Store global configuration modules
