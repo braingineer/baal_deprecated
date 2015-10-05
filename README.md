@@ -1,34 +1,31 @@
-# Brian's Arsenal of Algorithms for [Language|Learning|Life] 
+# BAAL (Brian's Arsenal of Algorithms for L*)
 
 A collection of algorithms and data structures I use for research.
 
 So, the arsenal is composed of: 
 
--------
-* CRF
-    - Linear CRF
-    - (there's an hmm here)
-
--------
-* learn 
-    - Bayesian Hierarchical Grouping 
+### Core Algorithms 
+* Conditional Random Fields
+* Bayesian Hierarchical Clustering/Grouping 
         + A port from a MATLAB port from the original C implementation
-* NLP
+* Natural Language Processing
     - Corpora
-        + Interfaces and handlers for corpora go here
+        + Interfaces and handlers for corpora go here for a variety of datasets
     - Grammars
-        + As of right now, just a couple toy / made up grammars
+        + Tree Insertion Grammar
     - Induce
         + Tree enrichment rules from Michael Collins' dissertation. Mostly ported from Stanford CoreNLP
     - Lexicon
         + Words and their properties. used to interface with the grammars eventually
     - Parse
-        + Tree chart
+        + Tree chart for the tree insertion grammar
     - Semantics
         + Currently, a simple model inspired by Hobbsian Logical Form
-    - Note: the tree data structure which bears the brunt of the parsing work is in the utils.data_structures
+    - Generate
+        + Natural Language Generation stuff
+    - Note: the tree data structure which bears the brunt of the tree grammar work is in the utils.data_structures
 
--------
+### Useful stuff
 * Utils
     - A variety of utilities that I find useful
     - Config
@@ -40,10 +37,3 @@ So, the arsenal is composed of:
     - vault
         + model storage
     - montecarlo, vocabulary (borrowed, citation in file), hobbsian logical form, and some other things. 
-
--------
-
-* Future plans
-    - Various grammars (CFG,TSG,and TAG)
-    - Logical formalisms (Hobbsian probably)
-    - Wrapper around scientific resources, like the [Scikit laboratory](http://scikit-learn-laboratory.readthedocs.org/en/latest/)
