@@ -36,9 +36,14 @@ def from_string(in_str):
         else:
             stack[-1][1].append(token)
 
-    assert len(stack) == 1
-    assert len(stack[0][1]) == 1
-    assert stack[0][0] is None
+    try:
+        assert len(stack) == 1
+        assert len(stack[0][1]) == 1
+        assert stack[0][0] is None
+    except AssertionError as e:
+        print stack
+        print in_str
+        raise AssertionError
 
     resulting_tree = stack[0][1][0]
     if isinstance(resulting_tree, types.ListType):
@@ -56,11 +61,14 @@ def clean_tree(root_tree, address, addressbook):
         this is to annotate with the relevant information
     """
     logger = logging.getLogger('trees')
+    logger.debug(root_tree)
 
     if "*" in root_tree.symbol:
         root_tree.adjunct = True
         root_tree.direction = "right" if root_tree.symbol[0] == "*" else "left"
         root_tree.symbol = root_tree.symbol.replace("*", "")
+
+    logger.debug('starting child iter for %s' % root_tree.symbol)
 
     for c_i, child in enumerate(root_tree.children):
         next_address = address+[c_i]
@@ -68,14 +76,16 @@ def clean_tree(root_tree, address, addressbook):
 
             if len(child.children) > 0:
                 # Interior node
+                logger.debug('diving into child')
+                logger.debug('specifically: %s' % child)
                 child, addressbook = clean_tree(child, next_address, addressbook)
                 root_tree.children[c_i] = child
 
-                if root_tree.head is not None:
+                if child.head is not None:
                     root_tree.head = child.head
                     root_tree.spine_index = c_i
-                else:
-                    raise AlgorithmicException, "Only making initial trees here"
+                #else:
+                #    raise AlgorithmicException, "Only making initial trees here"
 
             else:
                 # Substitution point
@@ -91,14 +101,24 @@ def clean_tree(root_tree, address, addressbook):
             root_tree.head = head.symbol
             root_tree.spine_index = c_i
 
-
         child.parent = root_tree.symbol
         addressbook[tuple(next_address)] = child
 
 
+    if all([child.complement for child in root_tree.children]):
+        logger.warning("Condition: this subtree has no lexical items. "+
+                       "This condition should be indicating co-heads. FIX")
+        root_tree.head = None
+
+
     # Debugging stuff
     try:
-        assert len(root_tree.head) > 0, type(root_tree)
+        logger.debug(root_tree.head)
+        logger.debug(root_tree.head is None)
+        logger.debug(type(root_tree.head))
+        logger.debug(root_tree.symbol)
+        logger.debug(addressbook)
+        assert root_tree.head is None or len(root_tree.head) > 0, type(root_tree)
     except AttributeError as e:
         logger.debug(root_tree)
         raise e
@@ -333,6 +353,24 @@ class Tree(object):
         this_str+=")"
         return this_str
 
+    def save_str(self):
+        if self.lexical:
+            return self.symbol
+
+        if self.adjunct:
+            sym = (self.symbol, "*") if self.direction=="left" else ("*", self.symbol)
+            sym = "{}{}".format(*sym)
+        else:
+            sym = self.symbol
+
+        this_str = "(%s" % sym
+        for child in self.children:
+            if child is None:
+                continue
+            this_str += " %s" % child.save_str()
+        this_str+=")"
+        return this_str
+
 
 class Entry(object):
     def __init__(self, tree, subst_points, adjoin_points,
@@ -341,6 +379,7 @@ class Entry(object):
         self.lexical = lexical
         self.addressbook = addressbook
         self.derived = derived
+        self.symbol = self.tree.symbol
 
         subst_points = sorted(subst_points)
         left_sub = []
@@ -357,9 +396,13 @@ class Entry(object):
                               or self.rightfrontier(point[0])]
 
     @classmethod
-    def make(cls, bracketed_string):
+    def make(cls, bracketed_string, correct_root=False):
         """ Initial make. Combine will copy, not make """
         tree, addressbook = Tree.make(bracketed_string=bracketed_string)
+        if correct_root:
+            if len(tree.symbol) == 0:
+                assert len(tree.children) == 1
+                tree, addressbook = tree.children[0].clone()
         addressbook = sorted(addressbook.items())
         adjoin_points = []
         subst_points = []
@@ -419,7 +462,12 @@ class Entry(object):
         return cls(new_tree, subst_points, adjoin_points, lexical, addressbook, derived)
 
     def isleft(self, address):
-        return self._isleft(tuple(address), tuple(self.lexical[0][0]))
+        try:
+            return self._isleft(tuple(address), tuple(self.lexical[0][0]))
+        except IndexError as e:
+            print(self.lexical)
+            print(self.tree)
+            raise IndexError
 
     def isright(self, address):
         return self._isright(tuple(address), tuple(self.lexical[-1][0]))
@@ -491,6 +539,12 @@ class Entry(object):
         for deriv in self.derived:
             print deriv
         print "======"
+
+    def __eq__(self, other):
+        return hash(self) == hash(other)
+
+    def __hash__(self):
+        return hash(repr(self.tree))
 
 """
 0 the 1 dog 2 is 3 in 4 a 5 fight 6

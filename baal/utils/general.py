@@ -19,15 +19,29 @@ class SimpleProgress:
 
     def __init__(self, total):
         self.total = total
+        self.count = 0
+        self.num_updates = 0
 
     def start_progress(self):
-        self.start_time = time.time()
+        self.start_time = time()
 
-    def update(self, x):
+    def incr(self, amount=1):
+        self.count+=1
+
+    def should_output(self, trigger_percent=0.1):
+        if self.count > self.total * trigger_percent * self.num_updates:
+            self.num_updates += 1
+            return True
+        return False
+
+    def update(self, x = None):
+        if x is None:
+            x = self.count
+
         if x > 0:
-            elapsed = time.time() - self.start_time
+            elapsed = time() - self.start_time
             percDone = x * 100.0 / self.total
-            estimatedTimeInSec = (elapsed * 1.0 / x) * self.total
+            estimatedTimeInSec = (elapsed / float(x)) * self.total
             return """
                   %s %s percent
                   %s Processed
@@ -40,7 +54,7 @@ class SimpleProgress:
         return ""
 
     def expiring(self):
-        elapsed = time.time() - self.start_time
+        elapsed = time() - self.start_time
         return elapsed / (60.0 ** 2) > 71.
 
     def form(self, t):

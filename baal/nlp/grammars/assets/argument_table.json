@@ -1,0 +1,13 @@
+{
+    "VB": [0, 3, ["PRT", "NP", "PP", "PP-PUT", "PP-DTV", "S", "SBAR", "SBARQ"]],
+    "VBP": [0, 3, ["PRT", "NP", "PP", "PP-PUT", "PP-DTV", "S", "SBAR", "SBARQ"]],
+    "VBZ": [0, 3, ["PRT", "NP", "PP", "PP-PUT", "PP-DTV", "S", "SBAR", "SBARQ"]],
+    "VBN": [0, 3, ["PRT", "NP", "PP", "PP-PUT", "PP-DTV", "S", "SBAR", "SBARQ"]],
+    "VBD": [0, 3, ["PRT", "NP", "PP", "PP-PUT", "PP-DTV", "S", "SBAR", "SBARQ"]],
+    "VBG": [0, 3, ["PRT", "NP", "PP", "PP-PUT", "PP-DTV", "S", "SBAR", "SBARQ"]],
+    "JJ": [0, 1, ["S", "NP"]],
+    "PP": [0, 1, ["NP", "S", "SBAR"]],
+    "IN": [0, 1, ["NP", "S", "SBAR"]],
+    "VP": [1, 1, ["NP-SBJ", "S-SBJ", "SBAR-SBJ", "NP", "S", "SBAR"]],
+    "ADJP": [0, 1, ["S", "SBAR"]]
+}

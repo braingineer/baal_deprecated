@@ -60,8 +60,13 @@ class Markov_Chain_Monte_Carlo:
                 #wiggle wiggle via gaussian random walk
                 param_proposal = self.proposal(parameters[t+1], parameters[t][i], i)
                 #print "proposed %s over %s, param #%s" % (param_proposal, parameters[t][i],i)
-                alpha = min([1,self.evaluation(parameters[t+1][:i]+[param_proposal]+parameters[t][i+1:], parameters[t+1], i)])
+
+                ### NOTICE:  this is a log space evaluation.
+                ### TODO: parameterize to choose between log space evaluation and normal evaluation
+                alpha = min( [1, (self.evaluation(parameters[t+1][:i] + [param_proposal]+parameters[t][i+1:],
+                                                  parameters[t+1], i))])
                 u = sample(1)[0]
+
                 #accept or reject
                 if u<=alpha: parameters[t+1][i]=param_proposal
                 else: num_rejected[i]+=1

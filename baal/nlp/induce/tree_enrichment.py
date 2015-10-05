@@ -26,7 +26,13 @@ Required datastructure (see data_structures for wrappers):
 @author bcmcmahan
 """
 import baal
-from baal.utils.general import backward_enumeration, flatten
+from baal.utils.general import backward_enumeration, flatten, SimpleProgress
+from collections import defaultdict
+import argparse
+try:
+    import cPickle as pickle
+except:
+    import pickle
 
 class CollinsMethod(object):
     headruleset = {
@@ -277,7 +283,7 @@ def mark_dependencies(parent, children):
     adjuncts = [child for c_i, child in enumerate(children)
                 if not child.complement and not parent.head_index == c_i]
     complements = [child for child in children if child.complement]
-    adjuncts, complements = specialcases(children, adjuncts, complements)
+    #adjuncts, complements = specialcases(children, adjuncts, complements)
     return adjuncts, complements, children
 
 def specialcases(children, adjuncts, complements):
@@ -499,8 +505,114 @@ def test4():
     for instr in instrs:
         print instr
         gentest(instr)
+
+
+def test5():
+    path = "/home/cogniton/research/data/LDC/treebank3/treebank_3/parsed/mrg/brown/cr/cr01.mrg"
+    with open(path) as fp:
+        lines = fp.readlines()
+    #print lines
+    start_indices = [i for i,x in enumerate(lines) if x[0] == "("]
+    # print start_indices
+    instrs = []
+
+    for i,ind2 in enumerate(start_indices[1:], 1):
+        ind1 = start_indices[i-1]
+        liststr = [x for x in lines[ind1:ind2] if len(x) > 0]
+        instrs.append("".join(liststr))
+
+    all_cuts = defaultdict(lambda: 0)
+
+    for instr in instrs:
+        tree, abook = baal.utils.data_structures.trees.from_string(instr)
+        populate_annotations(tree)
+        copied = tree.clone()
+        cuts = annotation_cut(tree)
+        for i,cut in enumerate(cuts):
+            all_cuts[repr(cut)]+=1
+    print "found %s cuts" % len(all_cuts.keys())
+    print "top cuts: "
+    for cut,count in sorted(all_cuts.items(), key=lambda x: x[1], reverse=True)[:10]:
+        print "\t{} :: {}".format(cut,count)
+
+def get_trees(infile):
+    fix = lambda y: [x.replace("\n","").replace("ROOT","").strip() for x in y]
+    with open(infile) as fp:
+        capacitor = []
+        is_consuming = True
+        for i, line in enumerate(fp):
+
+            # catching shitty noise
+            if line[0]!="(" and not capacitor:
+                continue
+
+            if line[0]=="(" and capacitor:
+                yield "".join(fix(capacitor))
+                capacitor = []
+
+            capacitor.append(line)
+
+
+
+def split_file(infile, outfile,data_n):
+    if '.' not in outfile:
+        outfile += '.pkl'
+
+    all_cuts = defaultdict(lambda: 0)
+
+    if data_n:
+        prog = SimpleProgress(data_n)
+        prog.start_progress()
+
+    for instr in get_trees(infile):
+
+        try:
+            tree, abook = baal.utils.data_structures.trees.from_string(instr)
+        except TypeError as e:
+            print "parsing a tree broke"
+            print instr
+            raise TypeError
+
+        populate_annotations(tree)
+        copied = tree.clone()
+        cuts = annotation_cut(tree)
+
+        for i,cut in enumerate(cuts):
+            all_cuts[cut.save_str()]+=1
+
+        # update us on timing
+        if  data_n:
+            prog.incr()
+            if prog.should_output():
+                print prog.update()
+                print "TOP 10"
+                for cut,count in sorted(all_cuts.items(), key=lambda x: x[1], reverse=True)[:10]:
+                    print "\t{} :: {}".format(cut,count)
+
+    all_cuts = {k:v for k,v in all_cuts.items()}
+    print 'finished. saving now.'
+    with open(outfile, 'wb') as fp_out:
+        pickle.dump(all_cuts, fp_out)
+    print "found %s cuts" % len(all_cuts.keys())
+    print "specify top n to show"
+    n = int(raw_input("n?: "))
+    print "top {} cuts: ".format(n)
+    for cut,count in sorted(all_cuts.items(), key=lambda x: x[1], reverse=True)[:n]:
+        print "\t{} :: {}".format(cut,count)
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Collins Head Rule on Phrase Structures')
+    parser.add_argument('treefile', type=str, help='a file with the to-split trees')
+    parser.add_argument('outfile', type=str, help='the filename for the output pickle')
+    parser.add_argument('-n', '--num_trees', type=int, default=0,
+                        help='the number of trees in the file if you know it')
+    return parser.parse_args()
+
 if __name__ == "__main__":
     # test()
     # test2()
     # test3()
-    test4()
+    # test4()
+    # test5()
+    args = parse_args()
+    split_file(args.treefile, args.outfile, args.num_trees)

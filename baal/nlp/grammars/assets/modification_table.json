@@ -1,0 +1,17 @@
+{
+"NAC": [["NP", "DT", "PRP$", "JJ", "JJR", "JJS", "RB", "RBR", "ADVP", "ADJP", "QP", "CD", "NN", "NNS", "NNP", "NNPS", "NAC", "POS", "VBN", "VBG", "$"], ["ADVP", "RB", "RBR", "ADVP", "PP", "RRC", "S", "SBAR", "SBARQ", "SQ", "VP"]],
+ "PP": [["RB", "RBR", "RBS", "ADVP", "WHADVP", "PP"], ["PP", "ADVP"]],
+ "SBAR": [["RB", "RBR", "RBS", "ADVP", "NP", "PP", "S", "SBAR", "WHADVP", "WHNP", "WHPP", "WHADJP", "WRB", "0", "IN"], ["S", "SBARQ"]],
+ "QP": [["RB", "RBR", "RBS", "ADVP", "CD", "$", "DT"], ["-"]],
+ "SINV": [["MD", "VB", "VBD", "VBP", "VBZ", "RB", "RBR", "RBS", "ADVP", "NP", "PP", "S", "SBAR", "SBARQ", "SQ", "SINV", "INTJ"], ["S", "SBAR", "SBAR", "PP", "ADVP"]],
+ "ADJP": [["RB", "RBR", "RBS", "ADVP", "CD", "QP", "NP", "NN", "NNP", "NNS", "WRB", "WHADVP"], ["PP"]],
+ "SQ": [["MD", "VB", "VBD", "VBP", "VBZ", "RB", "RBR", "RBS", "ADVP", "NP", "WHNP", "PP", "S", "SBAR", "INTJ"], ["S", "SBAR", "SBARQ", "PP", "ADVP", "NP"]],
+ "RRC": [["RB", "RBR", "RBS", "ADVP", "NP", "PP", "S", "SBAR"], ["S", "SBARQ"]],
+ "SBARQ": [["MD", "VB", "VBD", "VBN", "VBP", "VBZ", "VBG", "RB", "RBR", "RBS", "ADVP", "NP", "PP", "S", "SBAR", "WHADVP", "WHNP", "WHPP", "WHADJP", "WRB", "0", "IN"], ["S", "SBARQ", "PP", "ADVP", "NP"]],
+ "WHNP": [["WP$"], ["RB", "RBR", "ADVP", "PP"]],
+ "NX": [["NP", "DT", "PRP$", "JJ", "JJR", "JJS", "RB", "RBR", "ADVP", "ADJP", "QP", "CD", "NN", "NNS", "NNP", "NNPS", "NAC", "NX", "POS", "VBN", "VBG", "$"], ["ADJP", "RB", "RBR", "ADVP", "PP", "RRC", "S", "SBAR", "SBARQ", "SQ", "VP"]],
+ "S": [["LST", "RB", "RBR", "RBS", "ADVP", "NP", "PP", "S", "SBAR", "SBARQ", "SQ", "SINV", "INTJ", "IN"], ["S", "SBAR", "SBARQ", "PP", "ADVP"]],
+ "VP": [["RB", "RBR", "RBS", "ADVP", "PP", "MD", "VB", "VBD", "VBN", "VBP", "VBZ", "VBG", "TO", "VP"], ["RB", "RBR", "RBS", "ADVP", "PP", "NP", "S", "SBAR"]],
+ "NP": [["NP", "PDT", "DT", "PRP$", "JJ", "JJR", "JJS", "RB", "RBR", "ADVP", "ADJP", "QP", "CD", "NN", "NNS", "NNP", "NNPS", "NAC", "NX", "POS", "VBN", "VBG", "$"], ["ADJP", "RB", "RBR", "ADVP", "PP", "RRC", "S", "SBAR", "SBARQ", "SQ", "NP"]],
+ "ADVP": [["RB", "RBR", "RBS", "ADVP", "WRB", "WHADVP"], ["PP"]]
+}
