@@ -1,5 +1,5 @@
 # BAAL 
-#### (Brian's Arsenal of Algorithms for L*)
+### (Brian's Arsenal of Algorithms for L*)
 
 A collection of algorithms and data structures I use for research.
 
