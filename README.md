@@ -1,6 +1,6 @@
 # baal
 
-This package contains the collection of algorithms and data structure I use for research.   Hence, the name is an acronym: *brian's arsenal algorithms for language/learning*. 
+This package contains the collection of algorithms and data structure I use for research.   Hence, the name is an acronym: *brian's arsenal of algorithms for language/learning*. 
 
 ## Contents 
 * **.crf**: Conditional Random Field
