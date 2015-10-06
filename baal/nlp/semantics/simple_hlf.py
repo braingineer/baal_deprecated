@@ -1,6 +1,9 @@
 from baal.utils.hlf import gensym, unboundgensym
-from baal.utils.general import nonstr_join
+from baal.utils.general import nonstr_join, cformat
 from collections import deque
+import logging
+
+logger = logging.getLogger("hlfdebug")
 
 def from_addressbook(addressbook):
     """
@@ -14,7 +17,7 @@ def from_addressbook(addressbook):
             5. Adjuncts are functions on the headword.
 
         Procedure:
-            Iterate through address, tree pairs
+            Iterate through sorted (address, tree) pairs
                 1. If address is longer, we have descended into children
                 2. if parent's spine index is this address's last index, it's on spine
                 3. if this child has a marker "complement", it's an argumetn of parent
@@ -34,67 +37,88 @@ def from_addressbook(addressbook):
     parent_address, parent = addressbook[0]
     last_address, last_tree = addressbook[1]
 
+    c = lambda x,i: cformat("{}".format(x),i)
+
     for address, tree in addressbook[1:]:
-        # print address, tree
+
+        logger.debug(c("LOOPSTART:: {}, {}".format(address, tree),'f'))
 
 
         if enter_child_cond(address, last_address):
             # this means we are decending a level.
-            # print "child condition."
-            # print "pushing parent %s" % parent.head
-            # print "new parent %s" % last_tree.head
-            # print "current tree %s" % tree.head
+            logger.debug(c("CONDITION::new-child",'w'))
+            logger.debug("pushing parent: {}".format(parent.head))
+            logger.debug("new parent: {}".format(last_tree.head))
+            logger.debug("current tree: {}".format(tree.head))
             stack.append((parent, parent_address))
             parent, parent_address = last_tree, last_address
 
 
         elif exit_child_cond(address, last_address):
             # this means we are moving up a level
-            # print "exiting child condition"
-            # print "throwing %s away" % parent.head
+            logger.debug(c("CONDITION::exit-child",'w'))
+            logger.debug("done with {}".format(parent.head))
             while len(parent_address) >= len(address):
                 parent, parent_address = stack.pop()
-                # print address, parent_address
 
-            # print "popped %s as new (old) head" %  parent.head
-            # print "current tree: %s" % tree.head
+            logger.debug("new parent head: {}".format(parent.head))
+            logger.debug("current tree: {}".format(tree.head))
 
         else:
+            logger.debug(c("CONDITION::sibling","w"))
             # this means we are at the same level as last iteration
             pass
 
-
+        # make the parent symbol
         psym = gensym(head=parent.head, address=parent_address, symbol=parent.symbol)
+        # make the child symbol
         csym = (gensym(head=tree.head, address=address, symbol=tree.symbol)
                 if len(tree.head) > 0 else
                 gensym(head=tree.symbol, address=address, symbol=tree.symbol))
+
+        #### record the relationship
+
+        ### SPINE (aka, the node upon which the subtree belongs)
+        ## parent address is 1 len longer than current address
+        ## thus, address[-1] is child index
+        ## if spine_index is the same as the child index, then it's the spine
+        ## lexical material will always be here
+        ## nodes on the spine will also be here, though
         if parent.spine_index == address[-1]:
-            # print "spine condition."
-            # print "parent: %s<%s>" % (parent.symbol, parent.head)
-            # print "current: %s<%s>" % (tree.symbol, tree.head)
-            pass
-        elif tree.complement:
-            # print "complement condition"
-            # print "parent: %s<%s>" % (parent.symbol, parent.head)
-            # print "current: %s<%s>" % (tree.symbol, tree.head)
-            # print "psym %s for %s" % (psym, parent.head)
-            # print "csym %s for %s" % (csym, tree.head)
+            logger.debug(c("NODETYPE::spine",'0'))
+            logger.debug("parent: {}<{}>".format(parent.symbol, parent.head))
+            logger.debug("current: {}<{}>".format(tree.symbol, tree.head))
             if len(tree.children) == 0:
+                logger.debug("lexical material")
+                logical_form.setdefault(csym, [csym]).append( unboundgensym(head=tree.symbol,address=address))
+
+        ### ARGUMETN CONDITION
+        ## parent address is one longer
+        ## this has been marked as a substituted node
+        ## thus, it's an argument of the parent
+        elif tree.is_argument:
+            logger.debug(c("NODETYPE::complement/argument",'0'))
+            logger.debug("parent: %s<%s>" % (parent.symbol, parent.head))
+            logger.debug("current: %s<%s>" % (tree.symbol, tree.head))
+            logger.debug("psym %s for %s" % (psym, parent.head))
+            logger.debug("csym %s for %s" % (csym, tree.head))
+
+            ## it's an argument, but it lacks its own lexical material
+            if len(tree.children) == 0:
+                logger.debug("NOCHILDREN::{}".format(tree.symbol))
                 csym = unboundgensym(head=tree.symbol,address=address, symbol=tree.symbol)
                 logical_form.setdefault(psym, [psym]).append(csym)
             else:
+                logger.debug("CHILDREN::{}".format(tree.symbol))
                 logical_form.setdefault(psym, [psym]).append(csym)
                 logical_form.setdefault(csym, [csym])
         else:
-            # print "Adjunct Condition"
-            # print "parent: %s<%s>" % (parent.symbol, parent.head)
-            # print "current: %s<%s>" % (tree.symbol, tree.head)
-            # print tree.complement
-            # print tree.adjunct
-            # print parent.spine_index
-            # print "adding psym %s to csym %s for head %s" % (psym, csym, tree.head)
+            logger.debug(c("CONDITION::adjunct", '0'))
+            logger.debug("parent: {}<{}>".format(parent.symbol, parent.head))
+            logger.debug("current: {}<{}>".format(tree.symbol, tree.head))
+            logger.debug("PSYM ({}) is argument to CSYM({}) for HEAD({})".format(psym, csym, tree.head))
             logical_form.setdefault(csym, [csym]).append(psym)
-        # print "--\n--\n"
+        logger.debug("--\n--\n")
         last_address, last_tree = address, tree
 
     hlf_make = lambda func,variables: "%s(%s)" % \

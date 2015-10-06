@@ -2,7 +2,7 @@ from baal.utils.sugar import memoized
 from baal.utils.general import cprint, bcolors, cformat, nonstr_join
 from baal.utils import config
 import re, types, logging
-
+logger = logging.getLogger("treedebugging")
 
 def from_string(in_str):
     """
@@ -133,6 +133,7 @@ class Tree(object):
         self.head = ""
         self.spine_index = -1
         self.complement = False
+        self.is_argument = False
         self.adjunct = False
         self.lexical = False
         self.depth = 0
@@ -163,14 +164,15 @@ class Tree(object):
 
         return new_tree, addressbook
 
-    def clone(self, address=[0], addressbook={},prefab_children=None):
+    def clone(self, address=[0], addressbook={},prefab_children=None,child_offset=0):
         """ Copy the tree and make the addressbook along the way """
+        #print("Cloning myself: {}".format(self))
         if prefab_children is not None:
             new_children = prefab_children
         else:
             new_children = []
             for c_i, child in enumerate(self.children):
-                new_child, addressbook = child.clone(address+[c_i], addressbook)
+                new_child, addressbook = child.clone(address+[c_i+child_offset], addressbook)
                 new_children.append(new_child)
         new_tree = Tree(self.symbol, children=new_children, parent=self.parent)
         new_tree.head = self.head
@@ -179,6 +181,9 @@ class Tree(object):
         new_tree.adjunct = self.adjunct
         new_tree.lexical = self.lexical
         new_tree.direction = self.direction
+        new_tree.is_argument = self.is_argument
+
+
 
         addressbook[tuple(address)] = new_tree
 
@@ -193,14 +198,14 @@ class Tree(object):
 
         # /// Check for base case
         if len(op_addr) == 0:
-            new_tree, addrbook = self.clone(recur_addr, addrbook)
             if op_tree.direction == "left":
                 # adding to the left side of the node
                 other_children = []
                 for c_i, child in enumerate(op_tree.children):
                     new_child, addrbook = child.clone(recur_addr+[c_i], addrbook)
                     other_children.append(new_child)
-                    new_child.parent = new_tree.symbol
+                    new_child.parent = self.symbol
+                new_tree, addrbook = self.clone(recur_addr, addrbook, child_offset=len(op_tree.children))
 
                 new_tree.children = other_children + new_tree.children
 
@@ -209,6 +214,7 @@ class Tree(object):
 
             else:
                 # Adding to the right side of the node
+                new_tree, addrbook = self.clone(recur_addr, addrbook)
                 other_children = []
                 b_i = len(self.children)
                 for c_i, child in enumerate(op_tree.children):
@@ -220,11 +226,11 @@ class Tree(object):
 
 
         # /// Recursive case. Clone children, recurse on operation child
-        next_addr, address = op_addr[0], op_addr[1:]
+        next_addr, new_op_addr = op_addr[0], op_addr[1:]
         new_children = []
         for c_i, child in enumerate(self.children):
             if c_i == next_addr:
-                new_child, addrbook = child.insert_into(op_tree, op_addr, recur_addr+[c_i], addrbook)
+                new_child, addrbook = child.insert_into(op_tree, new_op_addr, recur_addr+[c_i], addrbook)
                 new_child.parent = self.symbol
                 new_children.append(new_child)
             else:
@@ -243,7 +249,8 @@ class Tree(object):
         # /// Check for base case
         if len(op_addr) == 0:
             new_tree, addrbook = op_tree.clone(recur_addr, addrbook)
-            new_tree.complement = True
+            new_tree.complement = False
+            new_tree.is_argument = True
             return new_tree, addrbook
 
         # /// Recursive case. Clone children, recurse on operation child
@@ -254,6 +261,9 @@ class Tree(object):
                 new_child, addrbook = child.substitute_into(op_tree, op_addr,
                                                             recur_addr+[c_i], addrbook)
                 new_child.parent = self.symbol
+                if len(op_addr) == 0:
+                    new_child.complement = False
+                    new_child.is_argument = True
                 new_children.append(new_child)
             else:
                 new_child, addrbook = child.clone(recur_addr+[c_i], addrbook)
@@ -438,6 +448,8 @@ class Entry(object):
         deriv_sym = "%s(%s)" % (op_tree.symbol, op_tree.head)
         derived = this.derived + [("substitute", address, deriv_sym)] + \
                   [("subtree_derived", op.derived)]
+
+
         return cls(new_tree, subst_points, adjoin_points, lexical, addressbook, derived)
 
     @classmethod
@@ -445,6 +457,7 @@ class Entry(object):
         tree = this.tree
         op_tree = op.tree
         new_tree, addressbook = tree.insert_into(op_tree, address, [0], {})
+
         addressbook = sorted(addressbook.items())
         adjoin_points = []
         subst_points = []
@@ -459,14 +472,22 @@ class Entry(object):
         deriv_sym = "%s(%s)" % (op_tree.symbol, op_tree.head)
         derived = this.derived + [("insert", address, deriv_sym)] + \
                   [("ins_derived", op.derived)]
+        #if "Two" in str(lexical):
+        #    print("Inside generate: {}".format(new_tree.symbol))
+        #    print new_tree.children
+        #elif "Two" in str(addressbook):
+        #    print addressbook
+        #    print lexical
+        #    print op_tree, op_tree.direction
+        #    print tree
         return cls(new_tree, subst_points, adjoin_points, lexical, addressbook, derived)
 
     def isleft(self, address):
         try:
             return self._isleft(tuple(address), tuple(self.lexical[0][0]))
         except IndexError as e:
-            print(self.lexical)
-            print(self.tree)
+            logger.debug(self.lexical)
+            logger.debug(self.tree)
             raise IndexError
 
     def isright(self, address):
@@ -506,20 +527,26 @@ class Entry(object):
                 return False
         return True
 
-    def combine(self, other_entry, edge_conditionals=(True,True)):
+    def combine(self, other_entry, edge_conditionals=(True,True), genning=True):
         left_edge, right_edge = edge_conditionals
         other_tree = other_entry.tree
         sym_match = lambda x,y: x.symbol == y.symbol
         if other_tree.adjunct:
+            logger.debug("Looking at the adjunct: {}".format(other_tree))
             for address, subtree in self.adjoin_points:
                 if sym_match(other_tree, subtree):
+                    logger.debug("symbols match at subtree: {} \n\twith address {}".format(subtree, address))
                     # left insert says we are inserting on the left side
                     # of this (self) guy
                     # so, this means that left edge must true
                     left_insert = other_tree.direction == "left"
-                    if left_edge and self.leftfrontier(address) and left_insert:
+                    if (left_edge and (self.leftfrontier(address) or genning)
+                        and left_insert):
+                        logger.debug("should be yielding")
                         yield Entry.ins_generate(self, other_entry, address[1:])
-                    elif right_edge and self.rightfrontier(address) and not left_insert:
+                    elif (right_edge and (self.rightfrontier(address) or genning)
+                          and not left_insert):
+                        logger.debug("should be right yielding")
                         yield Entry.ins_generate(self, other_entry, address[1:])
         else:
             for address, subtree in self.subst_points:

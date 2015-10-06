@@ -26,16 +26,40 @@ Required datastructure (see data_structures for wrappers):
 @author bcmcmahan
 """
 import baal
-from baal.utils.general import backward_enumeration, flatten, SimpleProgress
+from baal.utils import AlgorithmicException
+from baal.utils.general import backward_enumeration, flatten, SimpleProgress, cformat
 from collections import defaultdict
 import argparse
+from functools import wraps
+import logging
 try:
     import cPickle as pickle
 except:
     import pickle
 
+logger = logging.getLogger("treecut")
+
+def debugrule(func):
+    @wraps(func)
+    def debug_and_call(*args,**kwargs):
+        if len(args)==2:
+            children, headlist = args
+        else:
+            return func(*args, **kwargs)
+        fname = cformat(func.func_name, 'w')
+        cname = cformat("{}".format(children), 'f')
+        logger.debug("inside {} search with children: {} and headlist: {}".format(fname,
+                                                                           cname,
+                                                                           headlist))
+        ind, suc = func(*args, **kwargs)
+        csel = cformat("{}".format(children[ind]),'f')
+        logger.debug("selecting {} at index {}; successful={}".format(csel, ind, suc))
+        return ind, suc
+    return debug_and_call
+
 class CollinsMethod(object):
     headruleset = {
+            "ROOT": [("right",)],
             "ADJP": [("left", "NNS", "QP", "NN", "$", "ADVP", "JJ",
                       "VBN", "VBG", "ADJP", "JJR", "NP", "JJS", "DT",
                       "FW", "RBR", "RBS", "SBAR", "RB")],
@@ -86,48 +110,61 @@ class CollinsMethod(object):
 
     class CMWrapper:
         @staticmethod
+        @debugrule
         def left(children, headlist):
+            """ head symbol preference then forward order of children preference """
             for head_symbol in headlist:
                 for c_i, child in enumerate(children):
                     if child.symbol == head_symbol:
-                        return c_i
-            return 0
+                        return c_i, True
+            return 0, False
+
 
         @staticmethod
+        @debugrule
         def right(children, headlist):
+            """ head symbol preference then backward order of children preference """
             for head_symbol in headlist:
                 for c_i, child in backward_enumeration(children):
                     if child.symbol == head_symbol:
-                        return c_i
-            return -1
+                        return c_i, True
+            return -1, False
 
         @staticmethod
+        @debugrule
         def leftdis(children, headlist):
+            """ forward order of children preference """
             for c_i, child in children:
-                if child in headlist:
-                    return c_i
-            return 0
+                if child.symbol in headlist:
+                    return c_i, True
+            return 0, False
 
         @staticmethod
+        @debugrule
         def rightdis(children, headlist):
+            """ backward order of children preference """
             for c_i, child in backward_enumeration(children):
-                if child in headlist:
-                    return c_i
-            return -1
+                if child.symbol in headlist:
+                    return c_i, True
+            return -1, False
 
         @staticmethod
+        @debugrule
         def leftexcept(children, headlist):
+            """ excluding symbols, forward order of children preference """
             for c_i, child in enumerate(children):
-                if child not in headlist:
-                    return c_i
-            return 0
+                if child.symbol not in headlist:
+                    return c_i, True
+            return 0, False
 
         @staticmethod
+        @debugrule
         def rightexcept(children, headlist):
+            """ excluding symbols, backward order of children preference """
             for c_i, child in backward_enumeration(children):
-                if child not in headlist:
-                    return c_i
-            return -1
+                if child.symbol not in headlist:
+                    return c_i, True
+            return -1, False
 
     headrule_functions = {"left": CMWrapper.left,
                           "right": CMWrapper.right,
@@ -181,12 +218,12 @@ def populate_annotations(tree):
     parent = tree
     children = tree.children
     parent = _annotate(parent, children)
-    parent = select_head(parent, children)
+    parent, children = select_head(parent, children)
     return parent
 
 def _annotate(parent, children):
     if parent.lexical:
-        parent.head_word = parent.symbol
+        parent.head = parent.symbol
         return parent
 
 
@@ -194,14 +231,14 @@ def _annotate(parent, children):
         # This is the lexical node.
         # Shouldn't be here though...
         # print parent, children
-        children[0].head_word = children[0].symbol
+        children[0].head = children[0].symbol
         raise ValueError, ("Shouldn't be here. tree_enrichment, lexical node",
                            "Unless.. Maybe we don't see only pre-terminals before leaves")
 
     if len(children)==1 and children[0].lexical:
         head = children[0]
         parent.head_index = 0
-        parent.head_word = children[0].symbol
+        parent.head = children[0].symbol
 
     else:
         # print len(children)
@@ -209,7 +246,7 @@ def _annotate(parent, children):
         for child in children:
             child = _annotate(child, child.children)
 
-        select_head(parent, children)
+        parent, children = select_head(parent, children)
         # print "with a parent as %s" % parent.symbol
         # print "the head is index %d" % parent.head_index
 
@@ -243,6 +280,8 @@ def select_head(parent, children):
             Returns (parent,children) with head child annotated
     """
     rules = CollinsMethod.headruleset[parent.symbol]
+    logger.debug("=======\n starting select head with "+cformat("{}".format(parent), '2'))
+    logger.debug("rules: {}".format(rules))
     # print "parent symbol", parent.symbol
     # print "rules",  rules
     for rule in rules:
@@ -250,18 +289,19 @@ def select_head(parent, children):
         search_method, argset = rule[0], rule[1:]
         # print rules
         func = CollinsMethod.headrule_functions[search_method]
-        head_ind = func(children, argset)
-        if head_ind is not None:
-            head_ind = len(children)-1 if head_ind < 0 else head_ind
+        head_ind, success = func(children, argset)
+        if success:
+            #head_ind = len(children)-1 if head_ind < 0 else head_ind
             head = children[head_ind]
             head.on_spine = True
             parent.head_index = head_ind
             # print head
-            parent.head_word = head.head_word
+            parent.head = head.head
             parent.head_symbol = head.symbol
             parent.spine_index = head_ind
-            return
-
+            logger.debug("=======")
+            return parent, children
+    raise AlgorithmicException("We shouldn't be here")
 
 def mark_dependencies(parent, children):
     """
